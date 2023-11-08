@@ -1,5 +1,7 @@
 FROM python:3.10-slim
 
+EXPOSE 5000
+
 WORKDIR /app
 
 COPY requirements.txt /app/
