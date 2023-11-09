@@ -3,6 +3,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token
 from flask_bcrypt import Bcrypt
+import boto3
+import botocore
+from datetime import datetime
+import hashlib
+import message_broker
+import re
+import tempfile
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'test'
@@ -152,14 +159,6 @@ def delete_video(video_id):
         return jsonify({'message': 'Video deleted successfully'}), 200
     else:
         return jsonify({'error': 'Video not found'}), 404
-    
-import boto3
-import botocore
-from datetime import datetime
-import hashlib
-import message_broker
-import re
-import tempfile
 
 access_key = 'DO00JQGULATEWKWZYCHA'
 secret = '5rpGncSUAkl0BCo0E63FBy5FR3EO/daTuwxZPvOcp+8'
@@ -298,38 +297,39 @@ def video_chunks():
     
 def cache_new(data, m3u8_key, cached_key):
     #create temp file to that acts as a notepad
+    temp_m3u8 = tempfile.NamedTemporaryFile(suffix=".m3u8", delete=True)
     try:
-        with tempfile.NamedTemporaryFile(mode='w+b', suffix=".m3u8",delete=False) as temp_m3u8:
-            s3.download_file(bucket, m3u8_key, temp_m3u8.name)
-            regex = r'[a-zA-Z0-9_-]+\.ts'
-            i=0
-            #get all rows in m3u8 file
-            with open(temp_m3u8.name, 'r') as f:
-                rows = f.readlines()
-            #for every .ts file generate a presigned url for it and replace the row
-            print("writing")
-            with open(temp_m3u8.name, 'w') as f:
-                for row in rows:
-                    if re.search(regex, row):
-                        ts_url = s3.generate_presigned_url('get_object', Params={'Bucket': bucket, 'Key': 'videos/'+data['user']+'/'+data['title']+'_'+str(i)+'.ts'})
-                        changed_ts = re.sub(regex, ts_url, row)
-                        f.write(changed_ts)
-                        i+=1
-                    else:
-                        f.write(row)
-            #to store contents of the temp file in s3
-            print("reading")
-            with open(temp_m3u8.name, 'r') as f:
-                m3u8_content = f.read()
-            response = s3.head_object(Bucket=bucket, Key= m3u8_key)
-            metadata = response['Metadata']
-            #caching it for 10 minutes
-            s3.put_object(Body=m3u8_content, Bucket=bucket, Key=cached_key, Metadata= metadata, Expires=600)
-            url = s3.generate_presigned_url('get_object', Params={'Bucket': bucket, 'Key': cached_key})
-            return jsonify({'m3u8': url,'metadata': metadata})
+        s3.download_file(bucket, m3u8_key, temp_m3u8.name)
+        regex = r'[a-zA-Z0-9_-]+\.ts'
+        #get all rows in m3u8 file
+        with open(temp_m3u8.name, 'r') as f:
+            rows = f.readlines()
+        #for every .ts file generate a presigned url for it and replace the row
+        i=0
+        with open(temp_m3u8.name, 'w') as f:
+            for row in rows:
+                if re.search(regex, row):
+                    ts_url = s3.generate_presigned_url('get_object', Params={'Bucket': bucket, 'Key': 'videos/'+data['user']+'/'+data['title']+'_'+str(i)+'.ts'})
+                    changed_ts = re.sub(regex, ts_url, row)
+                    f.write(changed_ts)
+                    i+=1
+                else:
+                    f.write(row)
+        #to store contents of the temp file in s3
+        print("reading")
+        with open(temp_m3u8.name, 'r') as f:
+            m3u8_content = f.read()
+        response = s3.head_object(Bucket=bucket, Key= m3u8_key)
+        metadata = response['Metadata']
+        #caching it for 10 minutes
+        s3.put_object(Body=m3u8_content, Bucket=bucket, Key=cached_key, Metadata= metadata, Expires=600)
+        url = s3.generate_presigned_url('get_object', Params={'Bucket': bucket, 'Key': cached_key})
+        return jsonify({'m3u8': url,'metadata': metadata})
     except Exception as e:
         print(str(e))
         return jsonify({'f': str(e)}), 500
+    finally:
+        temp_m3u8.close()
 
 #for listing all the videos available to watch (home page)
 @app.route('/api/thumbnails', methods=['GET'])
