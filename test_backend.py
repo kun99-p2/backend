@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token
@@ -10,11 +10,15 @@ import hashlib
 import message_broker
 import re
 import tempfile
+from flask_socketio import SocketIO, emit
+import time
+import threading
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'test'
 jwt = JWTManager(app)
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="http://localhost:5173")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 db = SQLAlchemy(app)
@@ -23,142 +27,6 @@ uname = ""
 video_title = ""
 video_i = ""
 video_id = 0
-
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String, unique=True, nullable=False)
-    password = db.Column(db.String, nullable=False)
-    
-    def __repr__(self):
-        return f'<User {self.username}>'
-    
-class Tokens(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String, unique=True, nullable=False)
-    token = db.Column(db.String, unique=True, nullable=False)
-    
-    def __repr__(self):
-        return f'<User {self.username}>'
-    
-class Views(db.Model):
-    id = db.Column(db.String, primary_key=True)
-    views = db.Column(db.Integer, default=0)
-
-    def __init__(self, id):
-        self.id = id
-    
-@app.route('/api/register', methods=['POST'])
-def register():
-    data = request.get_json()
-    if 'username' not in data or 'password' not in data:
-        return jsonify({'error': 'Invalid request data'}), 400
-    username = data['username']
-    password = data['password']
-    if User.query.filter_by(username=username).first():
-        return jsonify({'error': 'Username already taken'}), 400
-
-    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-    
-    new_user = User(username=username, password=hashed_password)
-    db.session.add(new_user)
-    db.session.commit()
-    return jsonify({'success': True, 'message': 'Registration successful'}), 201
-
-@app.route('/api/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    print(data)
-    if 'username' not in data or 'password' not in data:
-        return jsonify({'error': 'Invalid request data'}), 400
-    username = data['username']
-    password = data['password']
-    user = User.query.filter_by(username=username).first()
-    if user and bcrypt.check_password_hash(user.password, password):
-        access_token = create_access_token(identity=user.id)
-        new_access = Tokens(username=username, token=access_token)
-        #remove entry if there is already one associated with user
-        user_authenticated = Tokens.query.filter_by(username=username).first()
-        if user_authenticated:
-            db.session.delete(user_authenticated)
-            db.session.commit()
-        db.session.add(new_access)
-        db.session.commit()
-        global uname
-        uname = username
-        return jsonify({'success': True, 'message': 'Login successful', 'token': access_token}), 200
-    else:
-        return jsonify({'error': 'Invalid username or password'}), 401
-
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    global uname
-    uname = ""
-    return jsonify({'success': True, 'message': 'Logout successful'}), 200
-
-@app.route('/api/get_user_using_token', methods=['POST'])
-def get_user_using_token():
-    data = request.get_json()
-    if 'token' not in data:
-        return jsonify({'error': 'Need token'}), 400
-    token = data['token']
-    access = Tokens.query.filter_by(token=token).first()
-    return jsonify({'success': True, 'message': 'Username retrieved', 'username': access.username}), 200
-
-@app.route('/api/get_token', methods=['POST'])
-def get_token():
-    data = request.get_json()
-    if 'username' not in data:
-        return jsonify({'error': 'No access'}), 400
-    username = data['username']
-    access = Tokens.query.filter_by(username=username).first()
-    print(access)
-    return jsonify({'success': True, 'message': 'Token retrieved', 'token': access.token}), 200
-
-@app.route('/api/fetch_username', methods=['GET'])
-def fetch_username():
-    return jsonify({'success': True, 'name': uname}), 200
-
-#views stuff
-@app.route('/api/views/<video_id>', methods=['GET'])
-def get_view_count(video_id):
-    video = Views.query.get(video_id)
-    if video:
-        return jsonify({'views': video.views}), 200
-    else:
-        return jsonify({'error': 'Video not found'}), 404
-
-@app.route('/api/increment/<video_id>', methods=['POST'])
-def increase_view_count(video_id):
-    video = Views.query.get(video_id)
-    if video:
-        video.views += 1
-        db.session.commit()
-        return jsonify({'views': video.views}), 200
-    else:
-        return jsonify({'error': 'Video not found'}), 404
-
-@app.route('/api/initialize', methods=['POST'])
-def create_video():
-    data = request.get_json()
-    video_id = data.get('video_id')
-    if video_id:
-        new_video = Views(id=video_id)
-        db.session.add(new_video)
-        db.session.commit()
-        print("created "+video_id)
-        return jsonify({'message': 'Video created successfully'}), 201
-    else:
-        return jsonify({'error': 'Invalid video ID'}), 400
-
-@app.route('/api/remove_views/<video_id>', methods=['DELETE'])
-def delete_video(video_id):
-    video = Views.query.get(video_id)
-    if video:
-        db.session.delete(video)
-        db.session.commit()
-        return jsonify({'message': 'Video deleted successfully'}), 200
-    else:
-        return jsonify({'error': 'Video not found'}), 404
 
 access_key = 'DO00JQGULATEWKWZYCHA'
 secret = '5rpGncSUAkl0BCo0E63FBy5FR3EO/daTuwxZPvOcp+8'
@@ -399,7 +267,204 @@ def set_video_data():
 def video_data():
     return jsonify({'user': uname, 'id': video_id, 'title': video_title, 'i': video_i})
     
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String, unique=True, nullable=False)
+    password = db.Column(db.String, nullable=False)
+    
+    def __repr__(self):
+        return f'<User {self.username}>'
+    
+class Tokens(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String, unique=True, nullable=False)
+    token = db.Column(db.String, unique=True, nullable=False)
+    
+    def __repr__(self):
+        return f'<User {self.username}>'
+    
+class VLs(db.Model):
+    id = db.Column(db.String, primary_key=True)
+    views = db.Column(db.Integer, default=0)
+    likes = db.Column(db.Integer, default=0)
+
+    def __init__(self, id):
+        self.id = id
+        
+class Comments(db.Model):
+    id = db.Column(db.String, primary_key=True)
+    video_id = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.String, nullable=False)
+    timestamp = db.Column(db.String, nullable=False)
+
+    def __init__(self, id):
+        self.id = id
+        
+class Notifications(db.Model):
+    id = db.Column(db.String, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False)
+    notification = db.Column(db.String, nullable=False)
+    timestamp = db.Column(db.String, nullable=False)
+    isRead = db.Column(db.Boolean, nullable=False)
+
+    def __init__(self, id):
+        self.id = id
+    
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    if 'username' not in data or 'password' not in data:
+        return jsonify({'error': 'Invalid request data'}), 400
+    username = data['username']
+    password = data['password']
+    if User.query.filter_by(username=username).first():
+        return jsonify({'error': 'Username already taken'}), 400
+
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    
+    new_user = User(username=username, password=hashed_password)
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Registration successful'}), 201
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    print(data)
+    if 'username' not in data or 'password' not in data:
+        return jsonify({'error': 'Invalid request data'}), 400
+    username = data['username']
+    password = data['password']
+    user = User.query.filter_by(username=username).first()
+    if user and bcrypt.check_password_hash(user.password, password):
+        access_token = create_access_token(identity=user.id)
+        new_access = Tokens(username=username, token=access_token)
+        #remove entry if there is already one associated with user
+        user_authenticated = Tokens.query.filter_by(username=username).first()
+        if user_authenticated:
+            db.session.delete(user_authenticated)
+            db.session.commit()
+        db.session.add(new_access)
+        db.session.commit()
+        global uname
+        uname = username
+        return jsonify({'success': True, 'message': 'Login successful', 'token': access_token}), 200
+    else:
+        return jsonify({'error': 'Invalid username or password'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    global uname
+    uname = ""
+    return jsonify({'success': True, 'message': 'Logout successful'}), 200
+
+@app.route('/api/get_user_using_token', methods=['POST'])
+def get_user_using_token():
+    data = request.get_json()
+    if 'token' not in data:
+        return jsonify({'error': 'Need token'}), 400
+    token = data['token']
+    access = Tokens.query.filter_by(token=token).first()
+    return jsonify({'success': True, 'message': 'Username retrieved', 'username': access.username}), 200
+
+@app.route('/api/get_token', methods=['POST'])
+def get_token():
+    data = request.get_json()
+    if 'username' not in data:
+        return jsonify({'error': 'No access'}), 400
+    username = data['username']
+    access = Tokens.query.filter_by(username=username).first()
+    print(access)
+    return jsonify({'success': True, 'message': 'Token retrieved', 'token': access.token}), 200
+
+@app.route('/api/fetch_username', methods=['GET'])
+def fetch_username():
+    return jsonify({'success': True, 'name': uname}), 200
+
+#views stuff
+@app.route('/api/views/<video_id>', methods=['GET'])
+def get_vls(video_id):
+    video = VLs.query.get(video_id)
+    if video:
+        return jsonify({'views': video.views}), 200
+    else:
+        return jsonify({'error': 'Video not found'}), 404
+
+@app.route('/api/increment/<video_id>', methods=['POST'])
+def increase_views(video_id):
+    video = VLs.query.get(video_id)
+    if video:
+        video.views += 1
+        db.session.commit()
+        socketio.send('update_views',  {'video_id': video_id, 'views': video.views})
+        return jsonify({'views': video.views}), 200
+    else:
+        return jsonify({'error': 'Video not found'}), 404
+
+@app.route('/api/initialize', methods=['POST'])
+def create_video():
+    data = request.get_json()
+    video_id = data.get('video_id')
+    if video_id:
+        new_video = VLs(id=video_id)
+        db.session.add(new_video)
+        db.session.commit()
+        print("created "+video_id)
+        return jsonify({'message': 'Video created successfully'}), 201
+    else:
+        return jsonify({'error': 'Invalid video ID'}), 400
+
+@app.route('/api/remove_views/<video_id>', methods=['DELETE'])
+def delete_video(video_id):
+    video = VLs.query.get(video_id)
+    if video:
+        db.session.delete(video)
+        db.session.commit()
+        return jsonify({'message': 'Video deleted successfully'}), 200
+    else:
+        return jsonify({'error': 'Video not found'}), 404
+    
+@app.route('/api/like/<video_id>', methods=['POST'])
+def increase_likes(video_id):
+    video = VLs.query.get(video_id)
+    if video:
+        video.likes += 1
+        db.session.commit()
+        socketio.emit('update_likes',  {'video_id': video_id, 'likes': video.likes})
+        return jsonify({'likes': video.likes}), 200
+    else:
+        return jsonify({'error': 'Video not found'}), 404
+    
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
+    
+@socketio.on('update_views')
+def get_views(video_id):
+    video = VLs.query.get(video_id)
+    socketio.send('update_views',  {'video_id': video_id, 'views': video.views}, broadcast=True)
+    
+@socketio.on('update_likes')
+def get_likes(video_id):
+    video = VLs.query.get(video_id)
+    socketio.send('update_likes',  {'video_id': video_id, 'likes': video.likes}, broadcast=True)
+    
+# # def update_views():
+# #     while True:
+# #         for video in video_views:
+# #             video_views[video] += random.randint(1, 100)
+# #         socketio.emit('update_views', video_views)
+# #         time.sleep(10)
+
+# update_thread = threading.Thread(target=update_views)
+# update_thread.start()
+    
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=5000)
+    socketio.run(app)
