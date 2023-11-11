@@ -184,7 +184,6 @@ def cache_new(data, m3u8_key, cached_key):
                 else:
                     f.write(row)
         #to store contents of the temp file in s3
-        print("reading")
         with open(temp_m3u8.name, 'r') as f:
             m3u8_content = f.read()
         response = s3.head_object(Bucket=bucket, Key= m3u8_key)
@@ -387,18 +386,7 @@ def fetch_username():
 def get_vls(video_id):
     video = VLs.query.get(video_id)
     if video:
-        return jsonify({'views': video.views}), 200
-    else:
-        return jsonify({'error': 'Video not found'}), 404
-
-@app.route('/api/increment/<video_id>', methods=['POST'])
-def increase_views(video_id):
-    video = VLs.query.get(video_id)
-    if video:
-        video.views += 1
-        db.session.commit()
-        socketio.send('update_views',  {'video_id': video_id, 'views': video.views})
-        return jsonify({'views': video.views}), 200
+        return jsonify({'views': video.views, 'likes': video.likes}), 200
     else:
         return jsonify({'error': 'Video not found'}), 404
 
@@ -425,6 +413,17 @@ def delete_video(video_id):
     else:
         return jsonify({'error': 'Video not found'}), 404
     
+@app.route('/api/increment/<video_id>', methods=['POST'])
+def increase_views(video_id):
+    video = VLs.query.get(video_id)
+    if video:
+        video.views += 1
+        db.session.commit()
+        socketio.emit('update_views',  {'video_id': video_id, 'views': video.views})
+        return jsonify({'views': video.views}), 200
+    else:
+        return jsonify({'error': 'Video not found'}), 404
+    
 @app.route('/api/like/<video_id>', methods=['POST'])
 def increase_likes(video_id):
     video = VLs.query.get(video_id)
@@ -443,26 +442,6 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     print('Client disconnected')
-    
-@socketio.on('update_views')
-def get_views(video_id):
-    video = VLs.query.get(video_id)
-    socketio.send('update_views',  {'video_id': video_id, 'views': video.views}, broadcast=True)
-    
-@socketio.on('update_likes')
-def get_likes(video_id):
-    video = VLs.query.get(video_id)
-    socketio.send('update_likes',  {'video_id': video_id, 'likes': video.likes}, broadcast=True)
-    
-# # def update_views():
-# #     while True:
-# #         for video in video_views:
-# #             video_views[video] += random.randint(1, 100)
-# #         socketio.emit('update_views', video_views)
-# #         time.sleep(10)
-
-# update_thread = threading.Thread(target=update_views)
-# update_thread.start()
     
 if __name__ == '__main__':
     with app.app_context():
