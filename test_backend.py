@@ -77,16 +77,16 @@ def delete():
         response = s3.list_objects_v2(Bucket=bucket, Prefix="videos/"+username+'/')
         #list all videos for a user and delete video with matching title and id from request
         for obj in response.get('Contents', []):
-            obj_key = s3.head_object(Bucket=bucket, Key=obj['Key'])['Metadata']
-            if obj_key['title'] == title and obj_key['id'] == id:
+            obj_metadata = s3.head_object(Bucket=bucket, Key=obj['Key'])['Metadata']
+            if obj_metadata['title'] == title and obj_metadata['id'] == id:
+                print("HERE")
                 s3.delete_object(Bucket=bucket, Key=obj['Key'])
-                break
         #deleting thumbnail
         response_thumbnails = s3.list_objects_v2(Bucket=bucket, Prefix="thumbnail/"+username+'/')
         #list all thumbnails for a user and delete thumbnail with matching title and id from request
         for obj in response_thumbnails.get('Contents', []):
-            obj_key = s3.head_object(Bucket=bucket, Key=obj['Key'])['Metadata']
-            if obj_key['title'] == title and obj_key['id'] == id:
+            obj_metadata = s3.head_object(Bucket=bucket, Key=obj['Key'])['Metadata']
+            if obj_metadata['title'] == title and obj_metadata['id'] == id:
                 s3.delete_object(Bucket=bucket, Key=obj['Key'])
                 break
         try:
@@ -94,8 +94,8 @@ def delete():
             response_thumbnails = s3.list_objects_v2(Bucket=bucket, Prefix="cached/"+username+'/')
             #list all cached video for a user and delete cached video with matching title and id from request
             for obj in response_thumbnails.get('Contents', []):
-                obj_key = s3.head_object(Bucket=bucket, Key=obj['Key'])['Metadata']
-                if obj_key['title'] == title and obj_key['id'] == id:
+                obj_metadata = s3.head_object(Bucket=bucket, Key=obj['Key'])['Metadata']
+                if obj_metadata['title'] == title and obj_metadata['id'] == id:
                     s3.delete_object(Bucket=bucket, Key=obj['Key'])
                     break
         except Exception as e:
@@ -265,6 +265,8 @@ def set_video_data():
 @app.route('/api/videod', methods=['GET'])
 def video_data():
     return jsonify({'user': uname, 'id': video_id, 'title': video_title, 'i': video_i})
+
+#db/websocket stuff
     
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -434,7 +436,37 @@ def increase_likes(video_id):
         return jsonify({'likes': video.likes}), 200
     else:
         return jsonify({'error': 'Video not found'}), 404
-    
+   
+# id = db.Column(db.String, primary_key=True)
+#     video_id = db.Column(db.Integer, nullable=False)
+#     user_id = db.Column(db.Integer, nullable=False)
+#     comment = db.Column(db.String, nullable=False)
+#     timestamp = db.Column(db.String, nullable=False)
+
+@app.route('/api/get-comments', methods=['POST'])
+def get_comments():
+    data = request.get_json()
+    video = data.get('video')
+    if video_id:
+        comments = Comments.query.filter_by(video_id=video)
+        return jsonify({'message': 'Comments fetched', 'comments': comments.all()}), 201
+    else:
+        return jsonify({'error': 'Invalid video ID'}), 400
+
+@app.route('/api/add-comment', methods=['POST'])
+def add_comment():
+    data = request.get_json()
+    video = data.get('video')
+    if video_id:
+        new_comment = Comments(video_id=video, user_id=data.get('user'), comment=data.get('comment'), timestamp=data.get('timestamp'))
+        db.session.add(new_comment)
+        db.session.commit()
+        print("added new comment to: " + video)
+        return jsonify({'message': 'Comment added successfully'}), 201
+    else:
+        return jsonify({'error': 'Invalid video ID'}), 400
+     
+
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
