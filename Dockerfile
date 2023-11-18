@@ -2,7 +2,9 @@ FROM python:3.10-slim
 
 EXPOSE 5000
 
-RUN apt-get update && apt-get install -y libmariadb-dev-compat libmariadb-dev
+RUN apt-get update && apt-get install -y pkg-config
+
+RUN apt-get install -y libmariadb-dev-compat libmariadb-dev
 
 WORKDIR /app
 
