@@ -6,7 +6,7 @@ import botocore
 from redis import Redis
 from rq import Queue
 
-redis_conn = Redis(host='localhost', port=6379, db=0)
+redis_conn = Redis(host='redis-service', port=6379, db=0)
 firstQueue = Queue('q', connection=redis_conn)
 
 access_key = 'DO00JQGULATEWKWZYCHA'
