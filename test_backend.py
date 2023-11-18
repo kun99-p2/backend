@@ -11,6 +11,7 @@ import message_broker
 import re
 import tempfile
 from flask_socketio import SocketIO
+import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'test'
@@ -18,7 +19,7 @@ jwt = JWTManager(app)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="http://localhost:5173")
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root:kunRoot1!@localhost:3306/toktik'
+app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@{os.environ['MYSQL_HOST']}/{os.environ['MYSQL_DB']}"
 db = SQLAlchemy(app)
 bcrypt = Bcrypt()
 uname = ""
