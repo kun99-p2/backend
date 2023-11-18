@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 EXPOSE 5000
 
-RUN apt-get update && apt-get install -y libmysqlclient-dev
+RUN apt-get update && apt-get install -y libmariadb-dev-compat libmariadb-dev
 
 WORKDIR /app
 
