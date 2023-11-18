@@ -10,8 +10,6 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY init.sql /app/
-
 COPY requirements.txt /app/
 
 RUN pip install -r requirements.txt

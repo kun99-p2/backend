@@ -10,17 +10,18 @@ import hashlib
 import message_broker
 import re
 import tempfile
-from flask_socketio import SocketIO
-import os
+# from flask_socketio import SocketIO
+# import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'test'
 jwt = JWTManager(app)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="http://localhost:5173")
+#socketio = SocketIO(app, cors_allowed_origins="http://localhost:5173")
 
+app.config['SQLALCHEMY_DATABASE_URI'] = "mysql://root:kunRoot1!@localhost:3306/toktik"
 #app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@{os.environ['MYSQL_HOST']}/{os.environ['MYSQL_DB']}"
-app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql+mysqldb://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@{os.environ['MYSQL_HOST']}/{os.environ['MYSQL_DB']}?unix_socket=/run/mysqld/mysqld.sock"
+#app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql+mysqldb://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@{os.environ['MYSQL_HOST']}/{os.environ['MYSQL_DB']}?unix_socket=/run/mysqld/mysqld.sock"
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt()
@@ -40,7 +41,6 @@ s3 = session.client('s3',
                         endpoint_url='https://sgp1.digitaloceanspaces.com',
                         aws_access_key_id=access_key,
                         aws_secret_access_key=secret)
-
 #generating presigned url to save video to
 @app.route('/api/get_presigned_url', methods=['POST'])  
 def get_presigned_url():
@@ -425,7 +425,7 @@ def increase_views(video_id):
     if video:
         video.views += 1
         db.session.commit()
-        socketio.emit('update_views',  {'video_id': video_id, 'views': video.views})
+        #socketio.emit('update_views',  {'video_id': video_id, 'views': video.views})
         return jsonify({'views': video.views}), 200
     else:
         return jsonify({'error': 'Video not found'}), 404
@@ -436,7 +436,7 @@ def increase_likes(video_id):
     if video:
         video.likes += 1
         db.session.commit()
-        socketio.emit('update_likes',  {'video_id': video_id, 'likes': video.likes})
+        #socketio.emit('update_likes',  {'video_id': video_id, 'likes': video.likes})
         return jsonify({'likes': video.likes}), 200
     else:
         return jsonify({'error': 'Video not found'}), 404
@@ -477,7 +477,7 @@ def add_comment():
             #if the comment is not by the owner
             if owner.user_id != comment.user_id:
                 noti = new_notifications.append(add_notification(video, owner.user_id, video_title, "There is a new comment on your video!", now))
-                socketio.emit('update_notifications', {'notification': noti.notification, 'notification_id':noti.id, 'title': noti.video_title, 'video_id': noti.video_id})
+                #socketio.emit('update_notifications', {'notification': noti.notification, 'notification_id':noti.id, 'title': noti.video_title, 'video_id': noti.video_id})
                 break
         print("CURRENTLY " + str(user.id))
         print("OWNER IS: " + owner.user_id)
@@ -487,7 +487,7 @@ def add_comment():
             print(comment.user_id)
             if comment.user_id != str(user.id) and comment.user_id != owner.user_id:
                 noti = add_notification(video, comment.user_id, video_title, "There is a new comment on a video you commented on!", now)
-                socketio.emit('update_notifications', {'notification': noti.notification, 'notification_id':noti.id, 'title': noti.video_title, 'video_id': noti.video_id})
+                #socketio.emit('update_notifications', {'notification': noti.notification, 'notification_id':noti.id, 'title': noti.video_title, 'video_id': noti.video_id})
                 break
         print("added new comment to: " + video)
         return jsonify({'message': 'Comment added successfully'}), 201
@@ -528,15 +528,16 @@ def get_notifications():
     else:
         return jsonify({'error': 'Invalid video ID'}), 400
 
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
+# @socketio.on('connect')
+# def handle_connect():
+#     print('Client connected')
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('Client disconnected')
+# @socketio.on('disconnect')
+# def handle_disconnect():
+#     print('Client disconnected')
     
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    socketio.run(app)
+    app.run(debug=True)
+    #socketio.run(app)
