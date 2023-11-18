@@ -146,7 +146,7 @@ def video_chunks():
         data = request.get_json()
         #get id of owner with video id
         #get username of owner with owner id
-        owner = VLs.query.get(data['id'])
+        owner = Vls.query.get(data['id'])
         user = User.query.filter_by(id=owner.user_id).first()
         m3u8_key = 'videos/'+user.username+'/'+data['title']+'.m3u8'
         cached_key = 'cached/'+user.username+'/'+data['title']+'.m3u8'
@@ -292,7 +292,7 @@ class Video(db.Model):
     user_id = db.Column(db.String(255), nullable=False)
     title = db.Column(db.String(255), nullable=False)
 
-class VLs(db.Model):
+class Vls(db.Model):
     id = db.Column(db.String(255), primary_key=True)
     user_id = db.Column(db.String(255), nullable=False)
     views = db.Column(db.Integer, default=0)
@@ -387,7 +387,7 @@ def fetch_username():
 #views stuff
 @app.route('/api/views/<video_id>', methods=['GET'])
 def get_vls(video_id):
-    video = VLs.query.get(video_id)
+    video = Vls.query.get(video_id)
     if video:
         return jsonify({'views': video.views, 'likes': video.likes}), 200
     else:
@@ -399,7 +399,7 @@ def create_video():
     video_id = data.get('video_id')
     if video_id:
         user = User.query.filter_by(username=uname).first()
-        new_video = VLs(id=video_id, user_id=user.id)
+        new_video = Vls(id=video_id, user_id=user.id)
         db.session.add(new_video)
         db.session.commit()
         print("created "+video_id)
@@ -409,7 +409,7 @@ def create_video():
 
 @app.route('/api/remove_views/<video_id>', methods=['DELETE'])
 def delete_video(video_id):
-    video = VLs.query.get(video_id)
+    video = Vls.query.get(video_id)
     comment = Comments.query.get(video_id=video)
     if video:
         db.session.delete(video)
@@ -421,7 +421,7 @@ def delete_video(video_id):
     
 @app.route('/api/increment/<video_id>', methods=['POST'])
 def increase_views(video_id):
-    video = VLs.query.get(video_id)
+    video = Vls.query.get(video_id)
     if video:
         video.views += 1
         db.session.commit()
@@ -432,7 +432,7 @@ def increase_views(video_id):
     
 @app.route('/api/like/<video_id>', methods=['POST'])
 def increase_likes(video_id):
-    video = VLs.query.get(video_id)
+    video = Vls.query.get(video_id)
     if video:
         video.likes += 1
         db.session.commit()
@@ -469,7 +469,7 @@ def add_comment():
         db.session.commit()
         #notify owner of video when there is a new comment
         #notify all the commenters in the video
-        owner = VLs.query.filter_by(id=video).first()
+        owner = Vls.query.filter_by(id=video).first()
         comments = Comments.query.filter_by(video_id=video).all()
         new_notifications = []
         for comment in comments:
