@@ -12,3 +12,6 @@ flask_bcrypt
 flask_sqlalchemy
 gunicorn
 flask_socketio
+mysqlclient
+pymysql
+mysql-connector-python
