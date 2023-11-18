@@ -2,6 +2,8 @@ FROM python:3.10-slim
 
 EXPOSE 5000
 
+RUN apt-get update && apt-get install -y libmysqlclient-dev
+
 WORKDIR /app
 
 COPY requirements.txt /app/
